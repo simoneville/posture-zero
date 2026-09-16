@@ -46,6 +46,48 @@ function jointMarker(radius) {
   return mesh;
 }
 
+// A rectangular torso-like solid lofted through an arbitrary number of
+// width/depth cross-sections, so it can taper (e.g. narrow at the waist,
+// flare at the shoulders) instead of being a uniform box. `profile` is a
+// list of {t, w, d} control points ordered bottom (t=0) to top (t=1); w/d
+// are the full width/depth at that height. Centered on Y like BoxGeometry,
+// spanning -height/2..+height/2, so it's a drop-in replacement for one.
+function loftedBox(profile, height, color) {
+  const ring = ({ t, w, d }) => {
+    const y = t * height - height / 2;
+    return [
+      [w / 2, y, d / 2], // front-right
+      [-w / 2, y, d / 2], // front-left
+      [-w / 2, y, -d / 2], // back-left
+      [w / 2, y, -d / 2], // back-right
+    ];
+  };
+  const rings = profile.map(ring);
+  const positions = [];
+  const quad = (a, b, c, d) => positions.push(...a, ...b, ...c, ...a, ...c, ...d);
+
+  for (let i = 0; i < rings.length - 1; i++) {
+    const lo = rings[i];
+    const hi = rings[i + 1];
+    for (let c = 0; c < 4; c++) {
+      const c2 = (c + 1) % 4;
+      quad(lo[c], lo[c2], hi[c2], hi[c]);
+    }
+  }
+  const bottom = rings[0];
+  quad(bottom[3], bottom[2], bottom[1], bottom[0]);
+  const top = rings[rings.length - 1];
+  quad(top[0], top[1], top[2], top[3]);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.8 }));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
 // A minimal face (two eyes + a nose bump) so front/back is unambiguous on
 // the otherwise-symmetric head sphere. Added as children of the head mesh
 // so they inherit neck/head rotation.
@@ -108,6 +150,8 @@ export function buildFigure(heightMeters) {
     headB: r.headBreadth * H,
     chestD: r.chestDepth * H,
     pelvisD: r.pelvisDepth * H,
+    waistW: r.waistWidth * H,
+    waistD: r.waistDepth * H,
   };
   const pelvisH = L.trunk * 0.32;
   const chestH = L.trunk * 0.68;
@@ -149,13 +193,18 @@ export function buildFigure(heightMeters) {
   joints.trunk_latflex = { group: lumbar.pivots.trunk_latflex, axis: 'z', xSign: 1 };
   joints.trunk_rotation = { group: lumbar.pivots.trunk_rotation, axis: 'y', xSign: 1 };
 
-  const chest = new THREE.Mesh(
-    new THREE.BoxGeometry(L.shoulderW, chestH, L.chestD),
-    new THREE.MeshStandardMaterial({ color: CLOTHING, roughness: 0.8 })
+  // The chest tapers from a narrow waist at its base (just above the pelvis)
+  // out to the shoulders at its top, rather than being a uniform block.
+  const chest = loftedBox(
+    [
+      { t: 0, w: L.waistW, d: L.waistD },
+      { t: 0.3, w: L.waistW * 1.02, d: L.waistD * 1.03 },
+      { t: 1, w: L.shoulderW, d: L.chestD },
+    ],
+    chestH,
+    CLOTHING
   );
   chest.position.y = chestH / 2;
-  chest.castShadow = true;
-  chest.receiveShadow = true;
   lumbar.tip.add(chest);
 
   // ---- Neck + head ----

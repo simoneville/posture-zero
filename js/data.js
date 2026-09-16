@@ -30,6 +30,12 @@ export const ANTHRO_RATIOS = {
   headBreadth: 0.130,
   chestDepth: 0.115,
   pelvisDepth: 0.105,
+  // The natural waist is narrower than both the shoulders and the hips —
+  // not part of the classic Drillis & Contini set, but a typical adult
+  // proportion used to give the torso a tapered silhouette instead of a
+  // uniform block.
+  waistWidth: 0.174,
+  waistDepth: 0.098,
 };
 
 // side: null (unpaired/axial), or 'pair' (instantiated once per L/R side)
