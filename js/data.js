@@ -46,6 +46,16 @@ export const ANTHRO_RATIOS = {
 //       on both sides.
 export const JOINT_GROUPS = [
   {
+    id: 'pelvis',
+    label: 'Pelvis',
+    side: null,
+    joints: [
+      { id: 'pelvis_tilt', label: 'Anterior / Posterior Tilt', min: -30, max: 30, axis: 'x', minLabel: 'Posterior', maxLabel: 'Anterior' },
+      { id: 'pelvis_obliquity', label: 'Obliquity', min: -20, max: 20, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
+      { id: 'pelvis_rotation', label: 'Rotation', min: -30, max: 30, axis: 'y', minLabel: 'Left', maxLabel: 'Right' },
+    ],
+  },
+  {
     id: 'head_neck',
     label: 'Head & Neck',
     side: null,

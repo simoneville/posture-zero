@@ -170,6 +170,25 @@ export function buildFigure(heightMeters) {
   const root = new THREE.Group();
   root.position.y = L.footH + L.shank + L.thigh;
 
+  // The pelvis itself is a pivot (tilt/obliquity/rotation), sitting at the
+  // hip-socket level. Everything else in the figure — the pelvis mesh, the
+  // spine, and both legs — is built as its children, so this one rotation
+  // carries the whole body the way it would if the pelvis physically tipped
+  // or hiked. There's no ground/foot-planting constraint anywhere in this
+  // rig, so the legs simply move with it like every other joint here.
+  const pelvisPivot = buildJointChain([
+    { id: 'pelvis_tilt', axis: 'x' },
+    { id: 'pelvis_obliquity', axis: 'z' },
+    { id: 'pelvis_rotation', axis: 'y' },
+  ]);
+  root.add(pelvisPivot.attachPoint);
+  // The pelvis and spine both rise from this pivot, so the same
+  // rising-chain reasoning as the trunk/neck applies: raw positive rotateX
+  // is already anterior.
+  joints.pelvis_tilt = { group: pelvisPivot.pivots.pelvis_tilt, axis: 'x', xSign: 1 };
+  joints.pelvis_obliquity = { group: pelvisPivot.pivots.pelvis_obliquity, axis: 'z', xSign: 1 };
+  joints.pelvis_rotation = { group: pelvisPivot.pivots.pelvis_rotation, axis: 'y', xSign: 1 };
+
   // ---- Pelvis + spine ----
   // The pelvis tapers from hip width at its base (where the femurs attach)
   // up to waist width at its top, matching the chest's own waist cross-
@@ -183,7 +202,7 @@ export function buildFigure(heightMeters) {
     SHORTS
   );
   pelvis.position.y = pelvisH / 2;
-  root.add(pelvis);
+  pelvisPivot.tip.add(pelvis);
 
   const lumbar = buildJointChain([
     { id: 'trunk_flexext', axis: 'x' },
@@ -191,7 +210,7 @@ export function buildFigure(heightMeters) {
     { id: 'trunk_rotation', axis: 'y' },
   ]);
   lumbar.attachPoint.position.y = pelvisH;
-  root.add(lumbar.attachPoint);
+  pelvisPivot.tip.add(lumbar.attachPoint);
   // The trunk rises from the lumbar pivot toward the head, so a raw
   // positive rotateX already tips it anteriorly (+Z) — that's flexion.
   joints.trunk_flexext = { group: lumbar.pivots.trunk_flexext, axis: 'x', xSign: 1 };
@@ -304,7 +323,7 @@ export function buildFigure(heightMeters) {
       { id: 'hip_rotation', axis: 'y' },
     ]);
     hip.attachPoint.position.set(sx * L.hipW / 2, 0, 0);
-    root.add(hip.attachPoint);
+    pelvisPivot.tip.add(hip.attachPoint);
     hip.attachPoint.add(jointMarker(RAD.thigh.r * 1.1));
     // Thigh hangs down from the hip; flexion (knee-up-front) is anterior,
     // same fix as the arm.
