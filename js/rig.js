@@ -171,13 +171,18 @@ export function buildFigure(heightMeters) {
   root.position.y = L.footH + L.shank + L.thigh;
 
   // ---- Pelvis + spine ----
-  const pelvis = new THREE.Mesh(
-    new THREE.BoxGeometry(L.hipW, pelvisH, L.pelvisD),
-    new THREE.MeshStandardMaterial({ color: SHORTS, roughness: 0.8 })
+  // The pelvis tapers from hip width at its base (where the femurs attach)
+  // up to waist width at its top, matching the chest's own waist cross-
+  // section so the two pieces read as one continuous, waisted torso.
+  const pelvis = loftedBox(
+    [
+      { t: 0, w: L.hipW, d: L.pelvisD },
+      { t: 1, w: L.waistW, d: L.waistD },
+    ],
+    pelvisH,
+    SHORTS
   );
   pelvis.position.y = pelvisH / 2;
-  pelvis.castShadow = true;
-  pelvis.receiveShadow = true;
   root.add(pelvis);
 
   const lumbar = buildJointChain([
