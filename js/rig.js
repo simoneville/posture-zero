@@ -159,11 +159,11 @@ export function buildFigure(heightMeters) {
   // Proximal radius + distal taper ratio (distal = proximal * taper) for
   // each tapered limb segment.
   const RAD = {
-    upperArm: { r: 0.030 * H, taper: 0.78 },
-    forearm: { r: 0.027 * H, taper: 0.60 },
-    thigh: { r: 0.062 * H, taper: 0.72 },
-    shank: { r: 0.046 * H, taper: 0.52 },
-    neck: { r: 0.046 * H, taper: 0.82 },
+    upperArm: { r: 0.030 * H *1.2, taper: 0.78 },
+    forearm: { r: 0.027 * H *1.2, taper: 0.60 },
+    thigh: { r: 0.062 * H *1.2, taper: 0.72 },
+    shank: { r: 0.046 * H *1.2, taper: 0.52 },
+    neck: { r: 0.046 * H *1.2, taper: 0.82 },
   };
 
   const joints = {}; // flat map: full id ("shoulder_flexext_R") -> {group, axis, side, ...sign flags}
