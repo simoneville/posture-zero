@@ -244,7 +244,7 @@ export function buildFigure(heightMeters) {
   // already anterior (chin-to-chest) flexion.
   joints.neck_flexext = { group: neckChain.pivots.neck_flexext, axis: 'x', xSign: 1 };
   joints.neck_latflex = { group: neckChain.pivots.neck_latflex, axis: 'z', xSign: 1 };
-  joints.neck_rotation = { group: neckChain.pivots.neck_rotation, axis: 'y', xSign: -1 };
+  joints.neck_rotation = { group: neckChain.pivots.neck_rotation, axis: 'y', xSign: 1 };
 
   neckChain.tip.add(limbUp(RAD.neck.r, RAD.neck.taper, L.neck, SKIN_DARK));
   const headR = L.headB / 2;

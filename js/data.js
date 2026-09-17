@@ -62,7 +62,7 @@ export const JOINT_GROUPS = [
     joints: [
       { id: 'neck_flexext', label: 'Flexion / Extension', min: -60, max: 50, axis: 'x', minLabel: 'Extension', maxLabel: 'Flexion' },
       { id: 'neck_latflex', label: 'Side Flexion', min: -45, max: 45, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
-      { id: 'neck_rotation', label: 'Rotation', min: -80, max: 80, axis: 'y', minLabel: 'Left', maxLabel: 'Right' },
+      { id: 'neck_rotation', label: 'Rotation', min: -80, max: 80, axis: 'y', minLabel: 'Right', maxLabel: 'Left' },
     ],
   },
   {
@@ -91,7 +91,7 @@ export const JOINT_GROUPS = [
     side: 'pair',
     joints: [
       { id: 'elbow_flex', label: 'Elbow Flexion', min: -10, max: 150, axis: 'x', minLabel: 'Hyperext.', maxLabel: 'Flexion' },
-      { id: 'forearm_pronsup', label: 'Pronation / Supination', min: -80, max: 80, axis: 'y', minLabel: 'Pronation', maxLabel: 'Supination', flipLeft: true },
+      { id: 'forearm_pronsup', label: 'Pronation / Supination', min: -180, max: 0, axis: 'y', minLabel: 'Pronation', maxLabel: 'Supination', flipLeft: true },
     ],
   },
   {
