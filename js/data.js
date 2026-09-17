@@ -51,8 +51,8 @@ export const JOINT_GROUPS = [
     side: null,
     joints: [
       { id: 'pelvis_tilt', label: 'Anterior / Posterior Tilt', min: -30, max: 30, axis: 'x', minLabel: 'Posterior', maxLabel: 'Anterior' },
-      { id: 'pelvis_obliquity', label: 'Obliquity', min: -20, max: 20, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
-      { id: 'pelvis_rotation', label: 'Rotation', min: -30, max: 30, axis: 'y', minLabel: 'Left', maxLabel: 'Right' },
+      { id: 'pelvis_obliquity', label: 'Obliquity', min: -20, max: 20, axis: 'z', minLabel: 'Right Up', maxLabel: 'Left Up' },
+      { id: 'pelvis_rotation', label: 'Rotation', min: -30, max: 30, axis: 'y', minLabel: 'Left Forward', maxLabel: 'Right Forward' },
     ],
   },
   {
@@ -61,7 +61,7 @@ export const JOINT_GROUPS = [
     side: null,
     joints: [
       { id: 'neck_flexext', label: 'Flexion / Extension', min: -60, max: 50, axis: 'x', minLabel: 'Extension', maxLabel: 'Flexion' },
-      { id: 'neck_latflex', label: 'Lateral Flexion', min: -45, max: 45, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
+      { id: 'neck_latflex', label: 'Side Flexion', min: -45, max: 45, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
       { id: 'neck_rotation', label: 'Rotation', min: -80, max: 80, axis: 'y', minLabel: 'Left', maxLabel: 'Right' },
     ],
   },
