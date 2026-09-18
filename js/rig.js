@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { ANTHRO_RATIOS } from './data.js';
 
 const SKIN = 0xe0b295;
 const SKIN_DARK = 0xcf9b74;
@@ -17,10 +16,9 @@ const SIDE_X = { R: -1, L: 1 };
 
 // Cylinder segments that hang down from their pivot (upper arm, forearm,
 // thigh, shank): the pivot is the proximal end, the mesh is shifted to
-// -length/2 so it extends from y=0 down to y=-length. Distal end tapers to a
-// smaller radius than the proximal end (`taper`, 0-1).
-function limbDown(radiusProximal, taper, length, color) {
-  const geo = new THREE.CylinderGeometry(radiusProximal, radiusProximal * taper, length, 12, 1);
+// -length/2 so it extends from y=0 down to y=-length.
+function limbDown(radiusProximal, radiusDistal, length, color) {
+  const geo = new THREE.CylinderGeometry(radiusProximal, radiusDistal, length, 12, 1);
   const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.7 }));
   mesh.position.y = -length / 2;
   mesh.castShadow = true;
@@ -28,10 +26,10 @@ function limbDown(radiusProximal, taper, length, color) {
   return mesh;
 }
 
-// Cylinder segments that rise up from their pivot (the neck, base at the
-// chest, tapering slightly narrower toward the head).
-function limbUp(radiusProximal, taper, length, color) {
-  const geo = new THREE.CylinderGeometry(radiusProximal * taper, radiusProximal, length, 12, 1);
+// Cylinder segments that rise up from their pivot (the neck segments, base
+// at the bottom near the torso, narrower end at the top).
+function limbUp(radiusProximal, radiusDistal, length, color) {
+  const geo = new THREE.CylinderGeometry(radiusDistal, radiusProximal, length, 12, 1);
   const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.7 }));
   mesh.position.y = length / 2;
   mesh.castShadow = true;
@@ -130,45 +128,46 @@ function buildJointChain(defs) {
   return { attachPoint, tip, pivots };
 }
 
-export function buildFigure(heightMeters) {
-  const H = heightMeters;
-  const r = ANTHRO_RATIOS;
-  const L = {
-    head: r.headHeight * H,
-    neck: r.neckLength * H,
-    trunk: r.trunkLength * H,
-    thigh: r.thighLength * H,
-    shank: r.shankLength * H,
-    footH: r.footHeight * H,
-    footL: r.footLength * H,
-    footB: r.footBreadth * H,
-    upperArm: r.upperArmLength * H,
-    forearm: r.forearmLength * H,
-    hand: r.handLength * H,
-    shoulderW: r.shoulderWidth * H,
-    hipW: r.hipWidth * H,
-    headB: r.headBreadth * H,
-    chestD: r.chestDepth * H,
-    pelvisD: r.pelvisDepth * H,
-    waistW: r.waistWidth * H,
-    waistD: r.waistDepth * H,
-  };
-  const pelvisH = L.trunk * 0.32;
-  const chestH = L.trunk * 0.68;
+// Registers a rising-chain spine segment (pelvis, lumbar, mid/upper
+// thoracic, cervical, head-on-neck all rise from their pivot toward the
+// head), wiring flexext/latflex/rotation with the "rising chain, no sign
+// flip" convention shared by all of them, and returns the built chain so
+// the caller can attach a visual mesh and the next segment to `.tip`.
+function addSpineSegment(joints, parent, prefix, length) {
+  const chain = buildJointChain([
+    { id: `${prefix}_flexext`, axis: 'x' },
+    { id: `${prefix}_latflex`, axis: 'z' },
+    { id: `${prefix}_rotation`, axis: 'y' },
+  ]);
+  parent.add(chain.attachPoint);
+  joints[`${prefix}_flexext`] = { group: chain.pivots[`${prefix}_flexext`], axis: 'x', sign: 1 };
+  joints[`${prefix}_latflex`] = { group: chain.pivots[`${prefix}_latflex`], axis: 'z', sign: 1 };
+  // Rotating this segment to the character's actual right (the labeled
+  // positive direction) needs rotateY negated: a raw positive rotateY on a
+  // rising chain swings it toward +X, which is the character's LEFT.
+  joints[`${prefix}_rotation`] = { group: chain.pivots[`${prefix}_rotation`], axis: 'y', sign: -1 };
+  chain.length = length;
+  return chain;
+}
 
-  // Proximal radius + distal taper ratio (distal = proximal * taper) for
-  // each tapered limb segment.
-  const RAD = {
-    upperArm: { r: 0.030 * H, taper: 0.78 },
-    forearm: { r: 0.027 * H, taper: 0.60 },
-    thigh: { r: 0.062 * H, taper: 0.72 },
-    shank: { r: 0.046 * H, taper: 0.52 },
-    neck: { r: 0.046 * H, taper: 0.82 },
-  };
-
+// `L` is a fully-resolved set of absolute lengths in meters (see
+// data.js#computeDefaultLengths — every ANTHRO_RATIOS key scaled by height,
+// then individually overridable in the Detailed Body Measurements panel).
+export function buildFigure(L) {
   const joints = {}; // flat map: full id ("shoulder_flexext_R") -> {group, axis, side, ...sign flags}
   const root = new THREE.Group();
-  root.position.y = L.footH + L.shank + L.thigh;
+  root.position.y = L.footHeight + L.shankLength + L.thighLength + L.pelvisLength;
+
+  // Smoothly interpolated torso cross-section between the waist (t=0) and
+  // the shoulders (t=1), biased (t^1.6) to stay closer to waist width
+  // through the lower back and flare out mostly through the upper back,
+  // roughly matching how the ribcage actually widens.
+  const torsoEase = (t) => Math.pow(t, 1.6);
+  const widthAt = (t) => L.waistWidth + (L.shoulderWidth - L.waistWidth) * torsoEase(t);
+  const depthAt = (t) => L.waistDepth + (L.chestDepth - L.waistDepth) * torsoEase(t);
+  const chestRegion = L.lumbarLength + L.midThoracicLength + L.upperThoracicLength;
+  const tLumbarTop = L.lumbarLength / chestRegion;
+  const tMidThoracicTop = (L.lumbarLength + L.midThoracicLength) / chestRegion;
 
   // The pelvis itself is a pivot (tilt/obliquity/rotation), sitting at the
   // hip-socket level. Everything else in the figure — the pelvis mesh, the
@@ -182,82 +181,89 @@ export function buildFigure(heightMeters) {
     { id: 'pelvis_rotation', axis: 'y' },
   ]);
   root.add(pelvisPivot.attachPoint);
-  // The pelvis and spine both rise from this pivot, so the same
-  // rising-chain reasoning as the trunk/neck applies: raw positive rotateX
-  // is already anterior.
-  joints.pelvis_tilt = { group: pelvisPivot.pivots.pelvis_tilt, axis: 'x', xSign: 1 };
-  joints.pelvis_obliquity = { group: pelvisPivot.pivots.pelvis_obliquity, axis: 'z', xSign: 1 };
-  joints.pelvis_rotation = { group: pelvisPivot.pivots.pelvis_rotation, axis: 'y', xSign: 1 };
+  joints.pelvis_tilt = { group: pelvisPivot.pivots.pelvis_tilt, axis: 'x', sign: 1 };
+  joints.pelvis_obliquity = { group: pelvisPivot.pivots.pelvis_obliquity, axis: 'z', sign: 1 };
+  // Same rotateY-negation as the spine segments (addSpineSegment) — see the
+  // comment there.
+  joints.pelvis_rotation = { group: pelvisPivot.pivots.pelvis_rotation, axis: 'y', sign: -1 };
 
-  // ---- Pelvis + spine ----
   // The pelvis tapers from hip width at its base (where the femurs attach)
-  // up to waist width at its top, matching the chest's own waist cross-
-  // section so the two pieces read as one continuous, waisted torso.
+  // up to waist width at its top, matching the lumbar segment's own base
+  // cross-section so the two pieces read as one continuous, waisted torso.
   const pelvis = loftedBox(
     [
-      { t: 0, w: L.hipW, d: L.pelvisD },
-      { t: 1, w: L.waistW, d: L.waistD },
+      { t: 0, w: L.hipWidth, d: L.pelvisDepth },
+      { t: 1, w: L.waistWidth, d: L.waistDepth },
     ],
-    pelvisH,
+    L.pelvisLength,
     SHORTS
   );
-  pelvis.position.y = pelvisH / 2;
+  pelvis.position.y = L.pelvisLength / 2;
   pelvisPivot.tip.add(pelvis);
 
-  const lumbar = buildJointChain([
-    { id: 'trunk_flexext', axis: 'x' },
-    { id: 'trunk_latflex', axis: 'z' },
-    { id: 'trunk_rotation', axis: 'y' },
-  ]);
-  lumbar.attachPoint.position.y = pelvisH;
-  pelvisPivot.tip.add(lumbar.attachPoint);
-  // The trunk rises from the lumbar pivot toward the head, so a raw
-  // positive rotateX already tips it anteriorly (+Z) — that's flexion.
-  joints.trunk_flexext = { group: lumbar.pivots.trunk_flexext, axis: 'x', xSign: 1 };
-  joints.trunk_latflex = { group: lumbar.pivots.trunk_latflex, axis: 'z', xSign: 1 };
-  joints.trunk_rotation = { group: lumbar.pivots.trunk_rotation, axis: 'y', xSign: 1 };
-
-  // The chest tapers from a narrow waist at its base (just above the pelvis)
-  // out to the shoulders at its top, rather than being a uniform block.
-  const chest = loftedBox(
-    [
-      { t: 0, w: L.waistW, d: L.waistD },
-      { t: 0.3, w: L.waistW * 1.02, d: L.waistD * 1.03 },
-      { t: 1, w: L.shoulderW, d: L.chestD },
-    ],
-    chestH,
-    CLOTHING
+  // ---- Spine: lumbar -> mid thoracic -> upper thoracic -> cervical ->
+  // head-on-neck -> head. Each is its own pivot (flex/ext, lateral flexion,
+  // rotation) so a scoliotic curve — different bends/rotations at different
+  // levels — can be posed directly, rather than one rigid "trunk" bend.
+  const lumbar = addSpineSegment(joints, pelvisPivot.tip, 'lumbar', L.lumbarLength);
+  lumbar.attachPoint.position.y = L.pelvisLength;
+  lumbar.tip.add(
+    loftedBox([{ t: 0, w: L.waistWidth, d: L.waistDepth }, { t: 1, w: widthAt(tLumbarTop), d: depthAt(tLumbarTop) }], L.lumbarLength, CLOTHING)
+      .translateY(L.lumbarLength / 2)
   );
-  chest.position.y = chestH / 2;
-  lumbar.tip.add(chest);
 
-  // ---- Neck + head ----
-  const neckChain = buildJointChain([
-    { id: 'neck_flexext', axis: 'x' },
-    { id: 'neck_latflex', axis: 'z' },
-    { id: 'neck_rotation', axis: 'y' },
-  ]);
-  neckChain.attachPoint.position.y = chestH;
-  lumbar.tip.add(neckChain.attachPoint);
-  neckChain.attachPoint.add(jointMarker(RAD.neck.r * 0.9));
-  // Same rising-chain reasoning as the trunk: raw positive rotateX is
-  // already anterior (chin-to-chest) flexion.
-  joints.neck_flexext = { group: neckChain.pivots.neck_flexext, axis: 'x', xSign: 1 };
-  joints.neck_latflex = { group: neckChain.pivots.neck_latflex, axis: 'z', xSign: 1 };
-  joints.neck_rotation = { group: neckChain.pivots.neck_rotation, axis: 'y', xSign: 1 };
+  const midThoracic = addSpineSegment(joints, lumbar.tip, 'mthoracic', L.midThoracicLength);
+  midThoracic.attachPoint.position.y = L.lumbarLength;
+  midThoracic.tip.add(
+    loftedBox(
+      [{ t: 0, w: widthAt(tLumbarTop), d: depthAt(tLumbarTop) }, { t: 1, w: widthAt(tMidThoracicTop), d: depthAt(tMidThoracicTop) }],
+      L.midThoracicLength,
+      CLOTHING
+    ).translateY(L.midThoracicLength / 2)
+  );
 
-  neckChain.tip.add(limbUp(RAD.neck.r, RAD.neck.taper, L.neck, SKIN_DARK));
-  const headR = L.headB / 2;
+  const upperThoracic = addSpineSegment(joints, midThoracic.tip, 'uthoracic', L.upperThoracicLength);
+  upperThoracic.attachPoint.position.y = L.midThoracicLength;
+  upperThoracic.tip.add(
+    loftedBox(
+      [{ t: 0, w: widthAt(tMidThoracicTop), d: depthAt(tMidThoracicTop) }, { t: 1, w: L.shoulderWidth, d: L.chestDepth }],
+      L.upperThoracicLength,
+      CLOTHING
+    ).translateY(L.upperThoracicLength / 2)
+  );
+
+  // ---- Neck: cervical -> head-on-neck -> head ----
+  const neckBaseR = L.headBreadth * 0.35;
+  const neckMidR = L.headBreadth * 0.315;
+  const neckTopR = L.headBreadth * 0.287;
+
+  const cervical = addSpineSegment(joints, upperThoracic.tip, 'cerv', L.cervicalLength);
+  cervical.attachPoint.position.y = L.upperThoracicLength;
+  cervical.attachPoint.add(jointMarker(neckBaseR * 0.95));
+  cervical.tip.add(limbUp(neckBaseR, neckMidR, L.cervicalLength, SKIN_DARK));
+
+  const headOnNeck = addSpineSegment(joints, cervical.tip, 'headneck', L.headOnNeckLength);
+  headOnNeck.attachPoint.position.y = L.cervicalLength;
+  headOnNeck.tip.add(limbUp(neckMidR, neckTopR, L.headOnNeckLength, SKIN_DARK));
+
+  const headR = L.headBreadth / 2;
   const head = new THREE.Mesh(
     new THREE.SphereGeometry(headR, 20, 16),
     new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.6 })
   );
-  head.position.y = L.neck + headR * 0.92;
+  head.position.y = L.headOnNeckLength + headR * 0.92;
   head.castShadow = true;
   addFace(head, headR);
-  neckChain.tip.add(head);
+  headOnNeck.tip.add(head);
 
   // ---- Arms ----
+  // Bony breadth at the elbow and wrist anchors both the taper of the upper
+  // arm/forearm and the joint markers there, so consecutive segments meet
+  // at a consistent thickness instead of an arbitrary multiplier.
+  const elbowR = L.elbowBreadth / 2;
+  const wristR = L.wristBreadth / 2;
+  const upperArmProximalR = elbowR * 1.4;
+
   for (const side of ['R', 'L']) {
     const sx = SIDE_X[side];
     const shoulder = buildJointChain([
@@ -265,56 +271,63 @@ export function buildFigure(heightMeters) {
       { id: 'shoulder_abadd', axis: 'z' },
       { id: 'shoulder_rotation', axis: 'y' },
     ]);
-    shoulder.attachPoint.position.set(sx * L.shoulderW / 2, chestH, 0);
-    lumbar.tip.add(shoulder.attachPoint);
-    shoulder.attachPoint.add(jointMarker(RAD.upperArm.r * 1.15));
+    // The shoulder (glenohumeral) joint center sits inboard of the torso's
+    // outer surface, at the biacromial width, not on the wider bideltoid
+    // surface the upper-thoracic mesh above is drawn at.
+    shoulder.attachPoint.position.set(sx * L.shoulderJointWidth / 2, L.upperThoracicLength, 0);
+    upperThoracic.tip.add(shoulder.attachPoint);
+    shoulder.attachPoint.add(jointMarker(upperArmProximalR * 1.05));
     // The upper arm hangs DOWN from the shoulder. A raw positive rotateX on
     // a hanging segment sweeps it posteriorly, so flexion (anterior, +Z)
     // needs the sign flipped.
-    joints[`shoulder_flexext_${side}`] = { group: shoulder.pivots.shoulder_flexext, axis: 'x', side, xSign: -1 };
+    joints[`shoulder_flexext_${side}`] = { group: shoulder.pivots.shoulder_flexext, axis: 'x', side, sign: -1 };
     joints[`shoulder_abadd_${side}`] = { group: shoulder.pivots.shoulder_abadd, axis: 'z', side, flipLeft: true };
     joints[`shoulder_rotation_${side}`] = { group: shoulder.pivots.shoulder_rotation, axis: 'y', side, flipLeft: true };
-    shoulder.tip.add(limbDown(RAD.upperArm.r, RAD.upperArm.taper, L.upperArm, SKIN));
+    shoulder.tip.add(limbDown(upperArmProximalR, elbowR, L.upperArmLength, SKIN));
 
     const elbow = buildJointChain([
       { id: 'elbow_flex', axis: 'x' },
       { id: 'forearm_pronsup', axis: 'y' },
     ]);
-    elbow.attachPoint.position.y = -L.upperArm;
+    elbow.attachPoint.position.y = -L.upperArmLength;
     shoulder.tip.add(elbow.attachPoint);
-    elbow.attachPoint.add(jointMarker(Math.max(RAD.upperArm.r * RAD.upperArm.taper, RAD.forearm.r) * 1.15));
+    elbow.attachPoint.add(jointMarker(elbowR * 1.15));
     // Elbow flexion brings the forearm anteriorly, same hanging-segment fix.
-    joints[`elbow_flex_${side}`] = { group: elbow.pivots.elbow_flex, axis: 'x', side, xSign: -1 };
+    joints[`elbow_flex_${side}`] = { group: elbow.pivots.elbow_flex, axis: 'x', side, sign: -1 };
     joints[`forearm_pronsup_${side}`] = { group: elbow.pivots.forearm_pronsup, axis: 'y', side, flipLeft: true };
-    elbow.tip.add(limbDown(RAD.forearm.r, RAD.forearm.taper, L.forearm, SKIN));
+    elbow.tip.add(limbDown(elbowR, wristR, L.forearmLength, SKIN));
 
     const wrist = buildJointChain([
       { id: 'wrist_flexext', axis: 'x' },
       { id: 'wrist_deviation', axis: 'z' },
     ]);
-    wrist.attachPoint.position.y = -L.forearm;
+    wrist.attachPoint.position.y = -L.forearmLength;
     elbow.tip.add(wrist.attachPoint);
-    wrist.attachPoint.add(jointMarker(RAD.forearm.r * RAD.forearm.taper * 1.25));
+    wrist.attachPoint.add(jointMarker(wristR * 1.2));
     // Wrist flexion (palm toward forearm) is also an anterior motion.
-    joints[`wrist_flexext_${side}`] = { group: wrist.pivots.wrist_flexext, axis: 'x', side, xSign: -1 };
+    joints[`wrist_flexext_${side}`] = { group: wrist.pivots.wrist_flexext, axis: 'x', side, sign: -1 };
     joints[`wrist_deviation_${side}`] = { group: wrist.pivots.wrist_deviation, axis: 'z', side, flipLeft: true };
 
     const hand = new THREE.Mesh(
-      new THREE.BoxGeometry(0.085 * H, L.hand, 0.020 * H),
+      new THREE.BoxGeometry(wristR * 2.4, L.handLength, wristR * 0.55),
       new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.6 })
     );
-    hand.position.y = -L.hand / 2;
+    hand.position.y = -L.handLength / 2;
     hand.castShadow = true;
     const palm = new THREE.Mesh(
-      new THREE.BoxGeometry(0.066 * H, L.hand * 0.82, 0.006 * H),
+      new THREE.BoxGeometry(wristR * 1.9, L.handLength * 0.82, wristR * 0.15),
       new THREE.MeshStandardMaterial({ color: PALM, roughness: 0.55 })
     );
-    palm.position.z = 0.020 * H / 2 + 0.003 * H;
+    palm.position.z = (wristR * 0.55) / 2 + wristR * 0.08;
     hand.add(palm);
     wrist.tip.add(hand);
   }
 
   // ---- Legs ----
+  const kneeR = L.kneeBreadth / 2;
+  const ankleR = L.ankleBreadth / 2;
+  const thighProximalR = kneeR * 1.7;
+
   for (const side of ['R', 'L']) {
     const sx = SIDE_X[side];
     const hip = buildJointChain([
@@ -322,54 +335,56 @@ export function buildFigure(heightMeters) {
       { id: 'hip_abadd', axis: 'z' },
       { id: 'hip_rotation', axis: 'y' },
     ]);
-    hip.attachPoint.position.set(sx * L.hipW / 2, 0, 0);
+    // Like the shoulder, the hip joint center (femoral head) sits well
+    // inboard of the pelvis's outer surface.
+    hip.attachPoint.position.set(sx * L.hipJointWidth / 2, 0, 0);
     pelvisPivot.tip.add(hip.attachPoint);
-    hip.attachPoint.add(jointMarker(RAD.thigh.r * 1.1));
+    hip.attachPoint.add(jointMarker(thighProximalR * 0.85));
     // Thigh hangs down from the hip; flexion (knee-up-front) is anterior,
     // same fix as the arm.
-    joints[`hip_flexext_${side}`] = { group: hip.pivots.hip_flexext, axis: 'x', side, xSign: -1 };
+    joints[`hip_flexext_${side}`] = { group: hip.pivots.hip_flexext, axis: 'x', side, sign: -1 };
     joints[`hip_abadd_${side}`] = { group: hip.pivots.hip_abadd, axis: 'z', side, flipLeft: true };
     joints[`hip_rotation_${side}`] = { group: hip.pivots.hip_rotation, axis: 'y', side, flipLeft: true };
-    hip.tip.add(limbDown(RAD.thigh.r, RAD.thigh.taper, L.thigh, SKIN_DARK));
+    hip.tip.add(limbDown(thighProximalR, kneeR, L.thighLength, SKIN_DARK));
 
     const knee = buildJointChain([{ id: 'knee_flex', axis: 'x' }]);
-    knee.attachPoint.position.y = -L.thigh;
+    knee.attachPoint.position.y = -L.thighLength;
     hip.tip.add(knee.attachPoint);
-    knee.attachPoint.add(jointMarker(Math.max(RAD.thigh.r * RAD.thigh.taper, RAD.shank.r) * 1.15));
+    knee.attachPoint.add(jointMarker(kneeR * 1.15));
     // Knee is the one hanging-segment joint where flexion is POSTERIOR
     // (heel toward the buttock) — the raw, un-flipped rotateX direction
-    // already matches that, so it keeps xSign +1.
-    joints[`knee_flex_${side}`] = { group: knee.pivots.knee_flex, axis: 'x', side, xSign: 1 };
-    knee.tip.add(limbDown(RAD.shank.r, RAD.shank.taper, L.shank, SKIN_DARK));
+    // already matches that, so it keeps sign +1.
+    joints[`knee_flex_${side}`] = { group: knee.pivots.knee_flex, axis: 'x', side, sign: 1 };
+    knee.tip.add(limbDown(kneeR, ankleR, L.shankLength, SKIN_DARK));
 
     const ankle = buildJointChain([
       { id: 'ankle_flexext', axis: 'x' },
       { id: 'ankle_inversion', axis: 'z' },
     ]);
-    ankle.attachPoint.position.y = -L.shank;
+    ankle.attachPoint.position.y = -L.shankLength;
     knee.tip.add(ankle.attachPoint);
-    ankle.attachPoint.add(jointMarker(RAD.shank.r * RAD.shank.taper * 1.3));
+    ankle.attachPoint.add(jointMarker(ankleR * 1.25));
     // The foot extends forward (+Z) from the ankle rather than hanging.
     // Raw positive rotateX tips a forward-pointing shape downward
     // (plantarflexion); dorsiflexion (toes up, +) needs the flip.
-    joints[`ankle_flexext_${side}`] = { group: ankle.pivots.ankle_flexext, axis: 'x', side, xSign: -1 };
+    joints[`ankle_flexext_${side}`] = { group: ankle.pivots.ankle_flexext, axis: 'x', side, sign: -1 };
     // Inversion rolls the sole to face the midline — the opposite sense
     // from "away from midline" abduction — so this one inverts the usual
     // flipLeft convention.
     joints[`ankle_inversion_${side}`] = { group: ankle.pivots.ankle_inversion, axis: 'z', side, flipLeft: true, invert: true };
 
     const foot = new THREE.Mesh(
-      new THREE.BoxGeometry(L.footB, L.footH, L.footL),
+      new THREE.BoxGeometry(L.footBreadth, L.footHeight, L.footLength),
       new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.9 })
     );
-    foot.position.set(0, -L.footH / 2, L.footL / 2 - 0.015 * H);
+    foot.position.set(0, -L.footHeight / 2, L.footLength / 2 - ankleR * 0.6);
     foot.castShadow = true;
     foot.receiveShadow = true;
     const toe = new THREE.Mesh(
-      new THREE.BoxGeometry(L.footB * 0.86, L.footH * 0.92, L.footL * 0.16),
+      new THREE.BoxGeometry(L.footBreadth * 0.86, L.footHeight * 0.92, L.footLength * 0.16),
       new THREE.MeshStandardMaterial({ color: TOE_CAP, roughness: 0.9 })
     );
-    toe.position.set(0, 0, L.footL / 2 - L.footL * 0.08);
+    toe.position.set(0, 0, L.footLength / 2 - L.footLength * 0.08);
     foot.add(toe);
     ankle.tip.add(foot);
   }
@@ -379,22 +394,25 @@ export function buildFigure(heightMeters) {
 
 // Applies a slider value (degrees, already in neutral-zero convention) to a joint.
 export function applyJointAngle(jointEntry, degrees) {
-  let sign = 1;
-  if (jointEntry.axis === 'x') {
-    // Forward/back (flexion-extension) sign, resolved per-joint in
-    // buildFigure() from the segment's hanging/rising geometry and its
-    // anatomical convention (see comments above).
-    sign = jointEntry.xSign ?? 1;
+  let sign;
+  if (jointEntry.sign !== undefined) {
+    // Explicit per-joint, per-axis sign resolved in buildFigure() from the
+    // segment's hanging/rising geometry and its anatomical convention (see
+    // comments above) — used for every unpaired (side: null) joint,
+    // whichever axis it rotates on.
+    sign = jointEntry.sign;
   } else if (jointEntry.flipLeft) {
-    // Side-to-side / twisting motions: right-side segments sit at -X,
-    // left at +X, and a raw positive rotateZ/rotateY always sweeps a
-    // hanging bone toward +X — so moving "away from the midline"
-    // (abduction, external rotation, radial deviation) needs the sign
-    // flipped on the right side only. `invert` flips that again for a
+    // Side-to-side / twisting motions on a *paired* joint: right-side
+    // segments sit at -X, left at +X, and a raw positive rotateZ/rotateY
+    // always sweeps a hanging bone toward +X — so moving "away from the
+    // midline" (abduction, external rotation, radial deviation) needs the
+    // sign flipped on the right side only. `invert` flips that again for a
     // motion whose positive sense is toward the midline instead (ankle
     // inversion).
     sign = jointEntry.side === 'R' ? -1 : 1;
     if (jointEntry.invert) sign *= -1;
+  } else {
+    sign = 1;
   }
   const rad = THREE.MathUtils.degToRad(degrees * sign);
   const g = jointEntry.group;
