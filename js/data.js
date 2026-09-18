@@ -218,8 +218,8 @@ export const JOINT_GROUPS = [
     side: null,
     joints: [
       { id: 'pelvis_tilt', label: 'Anterior / Posterior Tilt', min: -30, max: 30, axis: 'x', minLabel: 'Posterior', maxLabel: 'Anterior' },
-      { id: 'pelvis_obliquity', label: 'Obliquity', min: -20, max: 20, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
-      { id: 'pelvis_rotation', label: 'Rotation', min: -30, max: 30, axis: 'y', minLabel: 'Left', maxLabel: 'Right' },
+      { id: 'pelvis_obliquity', label: 'Obliquity', min: -20, max: 20, axis: 'z', minLabel: 'Right Up', maxLabel: 'Left Up' },
+      { id: 'pelvis_rotation', label: 'Rotation', min: -30, max: 30, axis: 'y', minLabel: 'Left Forward', maxLabel: 'Right Forward' },
     ],
   },
   {
@@ -229,7 +229,7 @@ export const JOINT_GROUPS = [
     joints: [
       { id: 'lumbar_flexext', label: 'Flexion / Extension', min: -15, max: 40, axis: 'x', minLabel: 'Extension', maxLabel: 'Flexion' },
       { id: 'lumbar_latflex', label: 'Lateral Flexion', min: -10, max: 10, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
-      { id: 'lumbar_rotation', label: 'Rotation', min: -8, max: 8, axis: 'y', minLabel: 'Left', maxLabel: 'Right' },
+      { id: 'lumbar_rotation', label: 'Rotation', min: -8, max: 8, axis: 'y', minLabel: 'Left Forward', maxLabel: 'Right Forward' },
     ],
   },
   {
@@ -239,7 +239,7 @@ export const JOINT_GROUPS = [
     joints: [
       { id: 'mthoracic_flexext', label: 'Flexion / Extension', min: -10, max: 25, axis: 'x', minLabel: 'Extension', maxLabel: 'Flexion' },
       { id: 'mthoracic_latflex', label: 'Lateral Flexion', min: -15, max: 15, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
-      { id: 'mthoracic_rotation', label: 'Rotation', min: -15, max: 15, axis: 'y', minLabel: 'Left', maxLabel: 'Right' },
+      { id: 'mthoracic_rotation', label: 'Rotation', min: -15, max: 15, axis: 'y', minLabel: 'Left Forward', maxLabel: 'Right Forward' },
     ],
   },
   {
@@ -249,7 +249,7 @@ export const JOINT_GROUPS = [
     joints: [
       { id: 'uthoracic_flexext', label: 'Flexion / Extension', min: -5, max: 15, axis: 'x', minLabel: 'Extension', maxLabel: 'Flexion' },
       { id: 'uthoracic_latflex', label: 'Lateral Flexion', min: -10, max: 10, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
-      { id: 'uthoracic_rotation', label: 'Rotation', min: -20, max: 20, axis: 'y', minLabel: 'Left', maxLabel: 'Right' },
+      { id: 'uthoracic_rotation', label: 'Rotation', min: -20, max: 20, axis: 'y', minLabel: 'Left Forward', maxLabel: 'Right Forward' },
     ],
   },
   {
@@ -259,7 +259,7 @@ export const JOINT_GROUPS = [
     joints: [
       { id: 'cerv_flexext', label: 'Flexion / Extension', min: -45, max: 38, axis: 'x', minLabel: 'Extension', maxLabel: 'Flexion' },
       { id: 'cerv_latflex', label: 'Lateral Flexion', min: -35, max: 35, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
-      { id: 'cerv_rotation', label: 'Rotation', min: -38, max: 38, axis: 'y', minLabel: 'Left', maxLabel: 'Right' },
+      { id: 'cerv_rotation', label: 'Rotation', min: -38, max: 38, axis: 'y', minLabel: 'Right', maxLabel: 'Left' },
     ],
   },
   {
@@ -269,7 +269,7 @@ export const JOINT_GROUPS = [
     joints: [
       { id: 'headneck_flexext', label: 'Flexion / Extension', min: -15, max: 12, axis: 'x', minLabel: 'Extension', maxLabel: 'Flexion' },
       { id: 'headneck_latflex', label: 'Lateral Flexion', min: -10, max: 10, axis: 'z', minLabel: 'Left', maxLabel: 'Right' },
-      { id: 'headneck_rotation', label: 'Rotation', min: -42, max: 42, axis: 'y', minLabel: 'Left', maxLabel: 'Right' },
+      { id: 'headneck_rotation', label: 'Rotation', min: -42, max: 42, axis: 'y', minLabel: 'Right', maxLabel: 'Left' },
     ],
   },
   {
@@ -288,7 +288,7 @@ export const JOINT_GROUPS = [
     side: 'pair',
     joints: [
       { id: 'elbow_flex', label: 'Elbow Flexion', min: -10, max: 150, axis: 'x', minLabel: 'Hyperext.', maxLabel: 'Flexion' },
-      { id: 'forearm_pronsup', label: 'Pronation / Supination', min: -80, max: 80, axis: 'y', minLabel: 'Pronation', maxLabel: 'Supination', flipLeft: true },
+      { id: 'forearm_pronsup', label: 'Pronation / Supination', min: -180, max: 0, axis: 'y', minLabel: 'Pronation', maxLabel: 'Supination', flipLeft: true },
     ],
   },
   {

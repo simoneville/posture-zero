@@ -8,6 +8,11 @@ const SHORTS = 0x3c4a5c;
 const JOINT_MARKER = 0x2b2f36;
 const TOE_CAP = 0x1c1c1f;
 
+// A flat visual bulk-up applied to every joint-breadth-derived radius
+// (elbow/wrist/knee/ankle/neck), on top of the anthropometric breadth data
+// itself, since the bare bony breadth alone rendered as noticeably thin.
+const LIMB_THICKNESS = 1.2;
+
 // The character faces +Z (world "anterior"/forward — this is the direction
 // the feet point). -Z is posterior/back, +Y is up. Right-side segments are
 // built at local -X, left-side at +X, so the character's right hand ends up
@@ -142,10 +147,15 @@ function addSpineSegment(joints, parent, prefix, length) {
   parent.add(chain.attachPoint);
   joints[`${prefix}_flexext`] = { group: chain.pivots[`${prefix}_flexext`], axis: 'x', sign: 1 };
   joints[`${prefix}_latflex`] = { group: chain.pivots[`${prefix}_latflex`], axis: 'z', sign: 1 };
-  // Rotating this segment to the character's actual right (the labeled
-  // positive direction) needs rotateY negated: a raw positive rotateY on a
-  // rising chain swings it toward +X, which is the character's LEFT.
-  joints[`${prefix}_rotation`] = { group: chain.pivots[`${prefix}_rotation`], axis: 'y', sign: -1 };
+  // A raw positive rotateY on a rising chain swings a forward-facing point
+  // (like the nose) toward +X — the character's left — while simultaneously
+  // swinging their actual right side forward (the same physical rotation,
+  // described from two different landmarks). Each group's labels in
+  // data.js are written to match whichever of those descriptions reads
+  // naturally for that segment (torso segments: "which side is forward";
+  // the neck: "which way you're facing"), so this stays a raw, un-flipped
+  // sign for every segment.
+  joints[`${prefix}_rotation`] = { group: chain.pivots[`${prefix}_rotation`], axis: 'y', sign: 1 };
   chain.length = length;
   return chain;
 }
@@ -182,10 +192,13 @@ export function buildFigure(L) {
   ]);
   root.add(pelvisPivot.attachPoint);
   joints.pelvis_tilt = { group: pelvisPivot.pivots.pelvis_tilt, axis: 'x', sign: 1 };
+  // Positive rotateZ here lifts the character's left hip (see the
+  // Obliquity label: "Right Up" / "Left Up").
   joints.pelvis_obliquity = { group: pelvisPivot.pivots.pelvis_obliquity, axis: 'z', sign: 1 };
-  // Same rotateY-negation as the spine segments (addSpineSegment) — see the
-  // comment there.
-  joints.pelvis_rotation = { group: pelvisPivot.pivots.pelvis_rotation, axis: 'y', sign: -1 };
+  // Same raw rotateY as the spine segments (addSpineSegment) — see the
+  // comment there. Positive swings the character's right hip forward
+  // (see the Rotation label: "Left Forward" / "Right Forward").
+  joints.pelvis_rotation = { group: pelvisPivot.pivots.pelvis_rotation, axis: 'y', sign: 1 };
 
   // The pelvis tapers from hip width at its base (where the femurs attach)
   // up to waist width at its top, matching the lumbar segment's own base
@@ -233,9 +246,9 @@ export function buildFigure(L) {
   );
 
   // ---- Neck: cervical -> head-on-neck -> head ----
-  const neckBaseR = L.headBreadth * 0.35;
-  const neckMidR = L.headBreadth * 0.315;
-  const neckTopR = L.headBreadth * 0.287;
+  const neckBaseR = L.headBreadth * 0.35 * LIMB_THICKNESS;
+  const neckMidR = L.headBreadth * 0.315 * LIMB_THICKNESS;
+  const neckTopR = L.headBreadth * 0.287 * LIMB_THICKNESS;
 
   const cervical = addSpineSegment(joints, upperThoracic.tip, 'cerv', L.cervicalLength);
   cervical.attachPoint.position.y = L.upperThoracicLength;
@@ -260,8 +273,8 @@ export function buildFigure(L) {
   // Bony breadth at the elbow and wrist anchors both the taper of the upper
   // arm/forearm and the joint markers there, so consecutive segments meet
   // at a consistent thickness instead of an arbitrary multiplier.
-  const elbowR = L.elbowBreadth / 2;
-  const wristR = L.wristBreadth / 2;
+  const elbowR = (L.elbowBreadth / 2) * LIMB_THICKNESS;
+  const wristR = (L.wristBreadth / 2) * LIMB_THICKNESS;
   const upperArmProximalR = elbowR * 1.4;
 
   for (const side of ['R', 'L']) {
@@ -324,8 +337,8 @@ export function buildFigure(L) {
   }
 
   // ---- Legs ----
-  const kneeR = L.kneeBreadth / 2;
-  const ankleR = L.ankleBreadth / 2;
+  const kneeR = (L.kneeBreadth / 2) * LIMB_THICKNESS;
+  const ankleR = (L.ankleBreadth / 2) * LIMB_THICKNESS;
   const thighProximalR = kneeR * 1.7;
 
   for (const side of ['R', 'L']) {
