@@ -13,6 +13,56 @@ function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
 }
 
+// Native <input type="range"> jumps its value to wherever a touch first
+// lands on the track — including a touch that's actually the start of a
+// page-scroll swipe passing over the slider. Calling preventDefault() to
+// stop that jump also cancels the browser's own scroll for the whole
+// gesture (tested: it doesn't just block the slider, it blocks scrolling
+// too), which trades "slider gets bumped" for "the page won't scroll from
+// here at all" — worse. So this never calls preventDefault; instead it
+// watches the first few pixels of movement after a touch starts, and if
+// that movement is clearly more vertical than horizontal (a scroll, not a
+// drag), it puts the value back to what it was before the touch. Native
+// scrolling is never interfered with, so it keeps working exactly as
+// before; the slider just stops being corrupted by it.
+function guardTouchJump(slider) {
+  let startValue = null;
+  let startX = 0;
+  let startY = 0;
+  let decided = false;
+
+  slider.addEventListener(
+    'touchstart',
+    (e) => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      startValue = slider.value;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      decided = false;
+    },
+    { passive: true }
+  );
+
+  slider.addEventListener(
+    'touchmove',
+    (e) => {
+      if (decided || startValue === null) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      const dx = Math.abs(touch.clientX - startX);
+      const dy = Math.abs(touch.clientY - startY);
+      if (dx < 6 && dy < 6) return; // not enough movement yet to tell
+      decided = true;
+      if (dy > dx && slider.value !== startValue) {
+        slider.value = startValue;
+        slider.dispatchEvent(new Event('input'));
+      }
+    },
+    { passive: true }
+  );
+}
+
 // `ranges[fullId]` holds this individual's measured extrema for the joint
 // (defaults to the standard neutral-zero values from data.js, editable).
 function buildSliderRow(fullId, def, state, ranges, onChange) {
@@ -34,6 +84,7 @@ function buildSliderRow(fullId, def, state, ranges, onChange) {
   slider.value = initial;
   state[fullId] = initial;
   readout.textContent = `${initial}°`;
+  guardTouchJump(slider);
 
   slider.addEventListener('input', () => {
     const v = Number(slider.value);

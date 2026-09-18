@@ -220,6 +220,11 @@ html, body {
 .joint-slider {
   width: 100%;
   accent-color: var(--accent);
+  /* A vertical swipe that starts on the slider is almost always someone
+     scrolling past it, not dragging it — this tells the browser to treat
+     that as page scroll and only capture a clearly-horizontal drag as a
+     value change. */
+  touch-action: pan-y;
 }
 .joint-row.is-active .joint-slider { accent-color: var(--accent-active); }
 
