@@ -20,6 +20,14 @@
 // an approximation based on well-documented segmental biomechanics (e.g. the
 // atlantoaxial joint contributing roughly half of all cervical rotation),
 // not a specific per-segment cadaveric study.
+//
+// DEFERRED: true percentile-based scaling (5th/50th/95th per individual
+// measurement, by sex — e.g. an ANSUR II-style table) is a known gap, not
+// an oversight. It needs a real published per-measurement percentile table;
+// SEX_ADJUSTMENTS below is a coarse stand-in (a single average-difference
+// multiplier per ratio), not that. Deliberately deferred rather than
+// fabricated — sourcing one is a lookup task, not a design decision, and
+// should replace/extend SEX_ADJUSTMENTS with a percentile axis when done.
 
 export const ANTHRO_RATIOS = {
   // ---- Head & neck (cervical spine split into two clinical groups) ----
