@@ -31,7 +31,26 @@
         Height (cm)
         <input id="height-input" type="number" min="50" max="230" step="1" value="170" />
       </label>
-      <p class="hint">Segment lengths, widths and the neutral-zero range of each joint scale from this single height using generalized adult proportion ratios.</p>
+      <label class="field-row">
+        Build
+        <select id="sex-select">
+          <option value="unisex">Average (unisex)</option>
+          <option value="male">Male-typical</option>
+          <option value="female">Female-typical</option>
+        </select>
+      </label>
+      <p class="hint">Segment lengths, widths and the neutral-zero range of each joint scale from height using generalized adult proportion ratios, nudged by typical male/female differences where a build is selected. Override any individual measurement below.</p>
+    </section>
+
+    <section class="panel-block">
+      <details id="measurements-details">
+        <summary><h2 class="inline-h2">Detailed Body Measurements (optional)</h2></summary>
+        <p class="hint">Every field defaults to this person&rsquo;s height (and build) scaled by generalized adult proportions. Type an individually measured value (in cm) to override just that one, independent of height &mdash; useful for asymmetric or atypical proportions.</p>
+        <div class="button-row">
+          <button id="reset-measurements-btn" type="button">Reset All Measurements to Height-Based</button>
+        </div>
+        <div id="measurement-panel"></div>
+      </details>
     </section>
 
     <section class="panel-block">

@@ -51,10 +51,16 @@ html, body {
   height: 100%;
 }
 
+/* The sidebar carries a lot of per-joint detail (labels + a slider + two
+   editable degree fields, often two-up for left/right), so on a wide
+   desktop window it gets more room than a fixed 380px allowed — that fixed
+   width was the cause of the horizontal scrollbars inside joint cards. */
 .sidebar {
-  width: 380px;
-  flex: 0 0 380px;
+  width: clamp(380px, 32vw, 620px);
+  flex: 0 0 clamp(380px, 32vw, 620px);
+  min-width: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--panel);
   border-left: 1px solid var(--border);
   padding: 0.9rem 1rem 2rem;
@@ -158,6 +164,7 @@ html, body {
   border-radius: 6px;
   margin-bottom: 0.5rem;
   padding: 0 0.6rem 0.5rem;
+  min-width: 0;
 }
 .joint-group summary {
   cursor: pointer;
@@ -179,8 +186,11 @@ html, body {
 
 .side-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.8rem;
+}
+.side-column {
+  min-width: 0;
 }
 .side-column h4 {
   margin: 0.2rem 0 0.3rem;
@@ -215,8 +225,10 @@ html, body {
 
 .joint-ends {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 0.2rem 0.5rem;
   font-size: 0.65rem;
   color: var(--muted);
   margin-top: 0.2rem;
@@ -225,10 +237,11 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
+  min-width: 0;
   cursor: default;
 }
 .end-field-right { flex-direction: row; }
-.end-label { white-space: nowrap; }
+.end-label { white-space: normal; }
 .end-deg { color: var(--muted); }
 .end-input {
   width: 2.6rem;
@@ -245,6 +258,75 @@ html, body {
   outline: none;
   border-color: var(--accent);
   background: #fff;
+}
+
+.inline-h2 {
+  display: inline;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0;
+}
+#measurements-details > summary {
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 0.5rem;
+}
+#measurements-details > summary::-webkit-details-marker { display: none; }
+#measurements-details > summary::before {
+  content: '▸ ';
+  color: var(--muted);
+}
+#measurements-details[open] > summary::before {
+  content: '▾ ';
+}
+
+.measure-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  padding: 0 0.6rem 0.4rem;
+  min-width: 0;
+}
+.measure-group summary {
+  cursor: pointer;
+  padding: 0.45rem 0;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+.measure-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.76rem;
+  padding: 0.25rem 0;
+  border-top: 1px solid var(--border);
+}
+.measure-row:first-of-type { border-top: none; }
+.measure-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.measure-input {
+  width: 4rem;
+  flex: 0 0 auto;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-align: right;
+  color: var(--ink);
+  background: #fbfcfd;
+}
+.measure-row.is-overridden .measure-input {
+  border-color: var(--accent-active);
+  color: var(--accent-active);
+  font-weight: 600;
+}
+.measure-unit {
+  color: var(--muted);
+  font-size: 0.7rem;
+  width: 1.4rem;
 }
 
 @media (max-width: 860px) {

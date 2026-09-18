@@ -1,11 +1,22 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildFigure, applyJointAngle } from './rig.js';
-import { buildControlPanel, resetAll, resetRanges, applyState, generateSummaryText } from './ui.js';
+import { computeDefaultLengths } from './data.js';
+import {
+  buildControlPanel,
+  resetAll,
+  resetRanges,
+  applyState,
+  generateSummaryText,
+  buildMeasurementPanel,
+  refreshMeasurementDefaults,
+  resetMeasurements,
+} from './ui.js';
 
 const viewport = document.getElementById('viewport');
 const panel = document.getElementById('control-panel');
 const heightInput = document.getElementById('height-input');
+const sexSelect = document.getElementById('sex-select');
 const resetBtn = document.getElementById('reset-btn');
 const resetRangesBtn = document.getElementById('reset-ranges-btn');
 const saveBtn = document.getElementById('save-btn');
@@ -15,11 +26,15 @@ const savedSelect = document.getElementById('saved-select');
 const loadBtn = document.getElementById('load-btn');
 const deleteBtn = document.getElementById('delete-btn');
 const summaryBox = document.getElementById('summary-box');
+const measurementPanel = document.getElementById('measurement-panel');
+const resetMeasurementsBtn = document.getElementById('reset-measurements-btn');
 
 const state = {}; // fullId -> current pose angle (deg)
 const ranges = {}; // fullId -> {min, max} this individual's measured extrema
+const lengthOverrides = {}; // measurementKey -> cm, only for fields the user has typed a value into
 let rig = null;
 let rows = null;
+let measurementRows = null;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xdfe6ec);
@@ -60,19 +75,58 @@ scene.add(ground);
 const grid = new THREE.GridHelper(6, 24, 0x9aa7ae, 0xb8c2c8);
 scene.add(grid);
 
+// The vertical segments that add up to standing height, for camera framing.
+// Kept in sync with buildFigure()'s own root.position.y + spine stack.
+const STANDING_STACK_KEYS = [
+  'footHeight', 'shankLength', 'thighLength', 'pelvisLength',
+  'lumbarLength', 'midThoracicLength', 'upperThoracicLength',
+  'cervicalLength', 'headOnNeckLength', 'headHeight',
+];
+
+function currentHeightMeters() {
+  return Math.max(50, Math.min(230, Number(heightInput.value) || 170)) / 100;
+}
+
+function currentSex() {
+  return sexSelect.value === 'unisex' ? null : sexSelect.value;
+}
+
+// Height/sex-derived defaults for every measurement, in meters, then with
+// any per-field override from the Detailed Body Measurements panel applied
+// on top (overrides are stored in cm since that's the panel's display unit).
+function currentLengths() {
+  const defaults = computeDefaultLengths(currentHeightMeters(), currentSex());
+  const lengths = { ...defaults };
+  for (const [key, cm] of Object.entries(lengthOverrides)) lengths[key] = cm / 100;
+  return lengths;
+}
+
+function currentDefaultsCm() {
+  const defaults = computeDefaultLengths(currentHeightMeters(), currentSex());
+  const cm = {};
+  for (const [key, m] of Object.entries(defaults)) cm[key] = m * 100;
+  return cm;
+}
+
+function standingHeightMeters(lengths) {
+  return STANDING_STACK_KEYS.reduce((sum, key) => sum + (lengths[key] || 0), 0);
+}
+
 function frameCamera(heightMeters) {
   camera.position.set(0, heightMeters * 0.62, heightMeters * 2.1);
   controls.target.set(0, heightMeters * 0.55, 0);
   controls.update();
 }
 
-function rebuildFigure(heightMeters) {
+function rebuildFigure() {
+  const lengths = currentLengths();
   if (rig) scene.remove(rig.root);
-  rig = buildFigure(heightMeters);
+  rig = buildFigure(lengths);
   scene.add(rig.root);
   for (const [fullId, entry] of Object.entries(rig.joints)) {
     applyJointAngle(entry, state[fullId] ?? 0);
   }
+  frameCamera(standingHeightMeters(lengths));
 }
 
 function onJointChange(fullId, degrees) {
@@ -81,25 +135,33 @@ function onJointChange(fullId, degrees) {
   summaryBox.value = generateSummaryText(state, Number(heightInput.value));
 }
 
-function currentHeightMeters() {
-  return Math.max(50, Math.min(230, Number(heightInput.value) || 170)) / 100;
+function onMeasurementChange() {
+  rebuildFigure();
 }
 
-rebuildFigure(currentHeightMeters());
-frameCamera(currentHeightMeters());
+rebuildFigure();
 rows = buildControlPanel(panel, state, ranges, rig, onJointChange);
+measurementRows = buildMeasurementPanel(measurementPanel, lengthOverrides, currentDefaultsCm, onMeasurementChange);
 summaryBox.value = generateSummaryText(state, Number(heightInput.value));
 
 heightInput.addEventListener('change', () => {
-  const h = currentHeightMeters();
-  rebuildFigure(h);
-  frameCamera(h);
+  rebuildFigure();
+  refreshMeasurementDefaults(measurementRows, lengthOverrides, currentDefaultsCm());
+});
+
+sexSelect.addEventListener('change', () => {
+  rebuildFigure();
+  refreshMeasurementDefaults(measurementRows, lengthOverrides, currentDefaultsCm());
 });
 
 resetBtn.addEventListener('click', () => resetAll(state, rows, onJointChange));
 resetRangesBtn.addEventListener('click', () => {
   if (!confirm('Reset every joint’s min/max back to the standard neutral-zero ranges? This discards this person’s custom measurements.')) return;
   resetRanges(ranges, rows, state, onJointChange);
+});
+resetMeasurementsBtn.addEventListener('click', () => {
+  if (!confirm('Reset every body measurement back to the height-derived default? This discards this person’s individually measured lengths.')) return;
+  resetMeasurements(measurementRows, lengthOverrides, currentDefaultsCm(), onMeasurementChange);
 });
 
 function resizeRenderer() {
@@ -155,11 +217,31 @@ function el_option(value, text) {
   return o;
 }
 
+function applyLoadedPayload(entry) {
+  heightInput.value = entry.heightCm;
+  sexSelect.value = entry.sex || 'unisex';
+  if (entry.ranges) Object.assign(ranges, entry.ranges);
+  for (const key of Object.keys(lengthOverrides)) delete lengthOverrides[key];
+  if (entry.lengthOverridesCm) Object.assign(lengthOverrides, entry.lengthOverridesCm);
+  rebuildFigure();
+  refreshMeasurementDefaults(measurementRows, lengthOverrides, currentDefaultsCm());
+  if (entry.angles) {
+    Object.assign(state, entry.angles);
+    applyState(state, rows, onJointChange, ranges);
+  }
+}
+
 saveBtn.addEventListener('click', () => {
   const name = prompt('Name this position (e.g. "Best corrected – 2026-09-16"):');
   if (!name) return;
   const saved = loadSavedPositions();
-  saved[name] = { heightCm: Number(heightInput.value), angles: { ...state }, ranges: JSON.parse(JSON.stringify(ranges)) };
+  saved[name] = {
+    heightCm: Number(heightInput.value),
+    sex: sexSelect.value,
+    angles: { ...state },
+    ranges: JSON.parse(JSON.stringify(ranges)),
+    lengthOverridesCm: { ...lengthOverrides },
+  };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
   refreshSavedSelect();
   savedSelect.value = name;
@@ -169,12 +251,7 @@ loadBtn.addEventListener('click', () => {
   const saved = loadSavedPositions();
   const entry = saved[savedSelect.value];
   if (!entry) return;
-  heightInput.value = entry.heightCm;
-  rebuildFigure(currentHeightMeters());
-  frameCamera(currentHeightMeters());
-  if (entry.ranges) Object.assign(ranges, entry.ranges);
-  Object.assign(state, entry.angles);
-  applyState(state, rows, onJointChange, ranges);
+  applyLoadedPayload(entry);
 });
 
 deleteBtn.addEventListener('click', () => {
@@ -187,8 +264,10 @@ deleteBtn.addEventListener('click', () => {
 exportBtn.addEventListener('click', () => {
   const payload = {
     heightCm: Number(heightInput.value),
+    sex: sexSelect.value,
     angles: { ...state },
     ranges: JSON.parse(JSON.stringify(ranges)),
+    lengthOverridesCm: { ...lengthOverrides },
     summary: generateSummaryText(state, Number(heightInput.value)),
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -205,14 +284,7 @@ importInput.addEventListener('change', async () => {
   if (!file) return;
   try {
     const payload = JSON.parse(await file.text());
-    if (payload.heightCm) heightInput.value = payload.heightCm;
-    rebuildFigure(currentHeightMeters());
-    frameCamera(currentHeightMeters());
-    if (payload.ranges) Object.assign(ranges, payload.ranges);
-    if (payload.angles) {
-      Object.assign(state, payload.angles);
-      applyState(state, rows, onJointChange, ranges);
-    }
+    applyLoadedPayload(payload);
   } catch (e) {
     alert('Could not read that file: ' + e.message);
   } finally {

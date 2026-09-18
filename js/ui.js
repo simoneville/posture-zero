@@ -1,4 +1,4 @@
-import { JOINT_GROUPS } from './data.js';
+import { JOINT_GROUPS, MEASUREMENT_GROUPS } from './data.js';
 
 const SIDE_LABEL = { R: 'Right', L: 'Left' };
 
@@ -224,6 +224,64 @@ const ALL_LABELS = (() => {
   }
   return map;
 })();
+
+// `overrides` holds {measurementKey: cm} for any field the user has typed a
+// specific value into; every other field tracks the height/sex-derived
+// default live. `getDefaultsCm()` returns the current full set of defaults
+// in cm (recomputed by the caller whenever height or sex changes).
+export function buildMeasurementPanel(container, overrides, getDefaultsCm, onChange) {
+  const rows = {}; // key -> { row, input }
+  const defaults = getDefaultsCm();
+
+  for (const group of MEASUREMENT_GROUPS) {
+    const details = el('details', 'measure-group');
+    const summary = el('summary', null, group.label);
+    details.append(summary);
+
+    for (const field of group.fields) {
+      const row = el('div', 'measure-row');
+      row.append(el('span', 'measure-label', field.label));
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'measure-input';
+      input.step = 0.1;
+      input.min = 0.1;
+      const hasOverride = Object.prototype.hasOwnProperty.call(overrides, field.key);
+      input.value = (hasOverride ? overrides[field.key] : defaults[field.key]).toFixed(1);
+      row.classList.toggle('is-overridden', hasOverride);
+      row.append(input, el('span', 'measure-unit', 'cm'));
+
+      input.addEventListener('change', () => {
+        const v = Number(input.value);
+        if (!Number.isFinite(v) || v <= 0) return;
+        overrides[field.key] = v;
+        row.classList.add('is-overridden');
+        onChange();
+      });
+
+      details.append(row);
+      rows[field.key] = { row, input };
+    }
+    container.append(details);
+  }
+  return rows;
+}
+
+// Re-syncs the displayed value of every non-overridden field to the current
+// height/sex-derived default (call after height or sex changes).
+export function refreshMeasurementDefaults(rows, overrides, defaultsCm) {
+  for (const [key, { row, input }] of Object.entries(rows)) {
+    const hasOverride = Object.prototype.hasOwnProperty.call(overrides, key);
+    row.classList.toggle('is-overridden', hasOverride);
+    if (!hasOverride) input.value = defaultsCm[key].toFixed(1);
+  }
+}
+
+export function resetMeasurements(rows, overrides, defaultsCm, onChange) {
+  for (const key of Object.keys(overrides)) delete overrides[key];
+  refreshMeasurementDefaults(rows, overrides, defaultsCm);
+  onChange();
+}
 
 export function generateSummaryText(state, heightCm) {
   const lines = [`Best Corrected Position — standing height ${heightCm} cm`, ''];
