@@ -8,6 +8,14 @@ const SHORTS = 0x3c4a5c;
 const JOINT_MARKER = 0x2b2f36;
 const TOE_CAP = 0x1c1c1f;
 
+// The spine indicator: a rounded line running down the back at each
+// vertebral level, plus a short contrasting rod at each level pointing
+// straight out the back (surface-normal), so axial rotation/lateral lean of
+// that section is visible even though the torso mesh itself is symmetric.
+const SPINE_LINE = 0xe8b23d;
+const SPINE_BEAD = 0xc6912a;
+const FACING_ROD = 0xd23c33;
+
 // A flat visual bulk-up applied to every joint-breadth-derived radius
 // (elbow/wrist/knee/ankle/neck), on top of the anthropometric breadth data
 // itself, since the bare bony breadth alone rendered as noticeably thin.
@@ -49,46 +57,154 @@ function jointMarker(radius) {
   return mesh;
 }
 
-// A rectangular torso-like solid lofted through an arbitrary number of
+// A ring of points around a rounded-rectangle cross-section (full width w,
+// full depth d) at height y. Each of the 4 corners is replaced with an
+// `arcSegs`-segment arc of radius `cornerFrac * min(halfWidth, halfDepth)`,
+// so the lofted solid built from these rings reads as a naturally rounded
+// torso instead of a sharp-edged box, and (just as importantly) so the
+// silhouette stays visually continuous across a joint bend instead of
+// showing the box's flat faces and corners suddenly kink apart.
+function roundedRectRing(w, d, y, cornerFrac = 0.35, arcSegs = 3) {
+  const hw = w / 2;
+  const hd = d / 2;
+  const r = Math.min(hw, hd) * cornerFrac;
+  // Corner centers, one per quadrant, in perimeter order (front-right,
+  // front-left, back-left, back-right) matching the original box winding.
+  const centers = [
+    [hw - r, hd - r],
+    [-(hw - r), hd - r],
+    [-(hw - r), -(hd - r)],
+    [hw - r, -(hd - r)],
+  ];
+  const points = [];
+  for (let c = 0; c < 4; c++) {
+    const [cx, cz] = centers[c];
+    for (let i = 0; i < arcSegs; i++) {
+      const theta = THREE.MathUtils.degToRad(90 * c + (90 * i) / arcSegs);
+      points.push([cx + Math.cos(theta) * r, y, cz + Math.sin(theta) * r]);
+    }
+  }
+  return points;
+}
+
+// A rounded torso-like solid lofted through an arbitrary number of
 // width/depth cross-sections, so it can taper (e.g. narrow at the waist,
 // flare at the shoulders) instead of being a uniform box. `profile` is a
 // list of {t, w, d} control points ordered bottom (t=0) to top (t=1); w/d
 // are the full width/depth at that height. Centered on Y like BoxGeometry,
 // spanning -height/2..+height/2, so it's a drop-in replacement for one.
 function loftedBox(profile, height, color) {
-  const ring = ({ t, w, d }) => {
-    const y = t * height - height / 2;
-    return [
-      [w / 2, y, d / 2], // front-right
-      [-w / 2, y, d / 2], // front-left
-      [-w / 2, y, -d / 2], // back-left
-      [w / 2, y, -d / 2], // back-right
-    ];
-  };
-  const rings = profile.map(ring);
+  const rings = profile.map(({ t, w, d }) => roundedRectRing(w, d, t * height - height / 2));
+  const n = rings[0].length;
   const positions = [];
   const quad = (a, b, c, d) => positions.push(...a, ...b, ...c, ...a, ...c, ...d);
+  const tri = (a, b, c) => positions.push(...a, ...b, ...c);
 
   for (let i = 0; i < rings.length - 1; i++) {
     const lo = rings[i];
     const hi = rings[i + 1];
-    for (let c = 0; c < 4; c++) {
-      const c2 = (c + 1) % 4;
+    for (let c = 0; c < n; c++) {
+      const c2 = (c + 1) % n;
       quad(lo[c], lo[c2], hi[c2], hi[c]);
     }
   }
+  // Fan-triangulated end caps (a flat quad-per-4-corners no longer works now
+  // that a ring has more than 4 points).
   const bottom = rings[0];
-  quad(bottom[3], bottom[2], bottom[1], bottom[0]);
+  const bottomCenter = [0, bottom[0][1], 0];
+  for (let c = 0; c < n; c++) tri(bottomCenter, bottom[(c + 1) % n], bottom[c]);
   const top = rings[rings.length - 1];
-  quad(top[0], top[1], top[2], top[3]);
+  const topCenter = [0, top[0][1], 0];
+  for (let c = 0; c < n; c++) tri(topCenter, top[c], top[(c + 1) % n]);
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.computeVertexNormals();
+  // This is a lofted shell (no solid interior fill), so a face that ever
+  // renders back-face-culled leaves a hole straight through to whatever's
+  // mounted behind it (the spine indicator, on the opposite wall). DoubleSide
+  // keeps every band opaque from any viewing angle regardless of winding.
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.8, side: THREE.DoubleSide }));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+// A smooth ellipsoid "collar" dropped at the shared boundary between two
+// torso segments, sized to that boundary's own cross-section. The torso
+// mesh is built as several independently-pivoting rigid segments, so a
+// sharp bend between them (e.g. a scoliotic curve) would otherwise open a
+// visible wedge-shaped gap or z-fighting seam at the joint; a soft rounded
+// filler there reads as a continuous, naturally-jointed torso instead.
+// `adjacentLength` is the shorter of the two segment lengths it sits
+// between, so the collar stays a subtle fillet even next to a short
+// segment (e.g. the upper thoracic) instead of ballooning past it.
+function torsoCollar(w, d, color, adjacentLength) {
+  const halfHeight = Math.min(Math.min(w, d) * 0.16, adjacentLength * 0.24);
+  const geo = new THREE.SphereGeometry(1, 16, 10);
+  geo.scale(w / 2, halfHeight, d / 2);
   const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.8 }));
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
+}
+
+// A small bead at a spine segment boundary (the shared attach point between
+// two segments), so the gold line's rounded capsule end on one side of a
+// bend has something to visually anchor against on the other side, instead
+// of two separate rounded tips just floating near each other.
+function addSpineBead(attachPoint, depth) {
+  const bead = new THREE.Mesh(
+    new THREE.SphereGeometry(0.015, 12, 8),
+    new THREE.MeshStandardMaterial({ color: SPINE_BEAD, roughness: 0.35, metalness: 0.15 })
+  );
+  bead.position.set(0, 0, -(depth / 2 + 0.008));
+  bead.castShadow = true;
+  attachPoint.add(bead);
+}
+
+// Adds this spine segment's visible indicator: a rounded gold line running
+// up the back (a capsule, so its ends stay rounded and read as continuous
+// with the next segment's line even across a bend) plus a short contrasting
+// rod pointing straight out the back — normal to the local coronal plane —
+// at the segment's mid-height. Because both are children of the segment's
+// own pivot chain, they inherit its flexion/lateral-flexion/rotation
+// exactly, so the rod visibly swings sideways under axial rotation or
+// lateral lean, making that section's true facing direction legible at a
+// glance instead of being hidden inside a symmetric torso mesh.
+function addSpineIndicator(tip, length, depthBase, depthTop) {
+  const depth = (depthBase + depthTop) / 2;
+  const backZ = -(depth / 2 + 0.008);
+  const lineRadius = 0.011;
+  const lineLength = Math.max(length - lineRadius * 2, 0.001);
+
+  const line = new THREE.Mesh(
+    new THREE.CapsuleGeometry(lineRadius, lineLength, 4, 8),
+    new THREE.MeshStandardMaterial({ color: SPINE_LINE, roughness: 0.35, metalness: 0.15 })
+  );
+  line.position.set(0, length / 2, backZ);
+  line.castShadow = true;
+  tip.add(line);
+
+  const rodLength = 0.05;
+  const coneHeight = 0.026;
+  const rod = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.007, 0.009, rodLength, 8),
+    new THREE.MeshStandardMaterial({ color: FACING_ROD, roughness: 0.3 })
+  );
+  rod.rotation.x = -Math.PI / 2;
+  rod.position.set(0, length / 2, backZ - rodLength / 2);
+  rod.castShadow = true;
+  tip.add(rod);
+
+  const rodTip = new THREE.Mesh(
+    new THREE.ConeGeometry(0.015, coneHeight, 8),
+    new THREE.MeshStandardMaterial({ color: FACING_ROD, roughness: 0.3 })
+  );
+  rodTip.rotation.x = -Math.PI / 2;
+  rodTip.position.set(0, length / 2, backZ - rodLength - coneHeight / 2);
+  rodTip.castShadow = true;
+  tip.add(rodTip);
 }
 
 // A minimal face (two eyes + a nose bump) so front/back is unambiguous on
@@ -213,6 +329,7 @@ export function buildFigure(L) {
   );
   pelvis.position.y = L.pelvisLength / 2;
   pelvisPivot.tip.add(pelvis);
+  addSpineIndicator(pelvisPivot.tip, L.pelvisLength, L.pelvisDepth, L.waistDepth);
 
   // ---- Spine: lumbar -> mid thoracic -> upper thoracic -> cervical ->
   // head-on-neck -> head. Each is its own pivot (flex/ext, lateral flexion,
@@ -220,13 +337,21 @@ export function buildFigure(L) {
   // levels — can be posed directly, rather than one rigid "trunk" bend.
   const lumbar = addSpineSegment(joints, pelvisPivot.tip, 'lumbar', L.lumbarLength);
   lumbar.attachPoint.position.y = L.pelvisLength;
+  // A rounded collar bridges the pelvis/lumbar boundary so a sharp
+  // lumbar bend doesn't open a visible gap against the (separately
+  // pivoting) pelvis above it.
+  lumbar.attachPoint.add(torsoCollar(L.waistWidth, L.waistDepth, CLOTHING, Math.min(L.pelvisLength, L.lumbarLength)));
+  addSpineBead(lumbar.attachPoint, L.waistDepth);
   lumbar.tip.add(
     loftedBox([{ t: 0, w: L.waistWidth, d: L.waistDepth }, { t: 1, w: widthAt(tLumbarTop), d: depthAt(tLumbarTop) }], L.lumbarLength, CLOTHING)
       .translateY(L.lumbarLength / 2)
   );
+  addSpineIndicator(lumbar.tip, L.lumbarLength, L.waistDepth, depthAt(tLumbarTop));
 
   const midThoracic = addSpineSegment(joints, lumbar.tip, 'mthoracic', L.midThoracicLength);
   midThoracic.attachPoint.position.y = L.lumbarLength;
+  midThoracic.attachPoint.add(torsoCollar(widthAt(tLumbarTop), depthAt(tLumbarTop), CLOTHING, Math.min(L.lumbarLength, L.midThoracicLength)));
+  addSpineBead(midThoracic.attachPoint, depthAt(tLumbarTop));
   midThoracic.tip.add(
     loftedBox(
       [{ t: 0, w: widthAt(tLumbarTop), d: depthAt(tLumbarTop) }, { t: 1, w: widthAt(tMidThoracicTop), d: depthAt(tMidThoracicTop) }],
@@ -234,9 +359,12 @@ export function buildFigure(L) {
       CLOTHING
     ).translateY(L.midThoracicLength / 2)
   );
+  addSpineIndicator(midThoracic.tip, L.midThoracicLength, depthAt(tLumbarTop), depthAt(tMidThoracicTop));
 
   const upperThoracic = addSpineSegment(joints, midThoracic.tip, 'uthoracic', L.upperThoracicLength);
   upperThoracic.attachPoint.position.y = L.midThoracicLength;
+  upperThoracic.attachPoint.add(torsoCollar(widthAt(tMidThoracicTop), depthAt(tMidThoracicTop), CLOTHING, Math.min(L.midThoracicLength, L.upperThoracicLength)));
+  addSpineBead(upperThoracic.attachPoint, depthAt(tMidThoracicTop));
   upperThoracic.tip.add(
     loftedBox(
       [{ t: 0, w: widthAt(tMidThoracicTop), d: depthAt(tMidThoracicTop) }, { t: 1, w: L.shoulderWidth, d: L.chestDepth }],
@@ -244,6 +372,7 @@ export function buildFigure(L) {
       CLOTHING
     ).translateY(L.upperThoracicLength / 2)
   );
+  addSpineIndicator(upperThoracic.tip, L.upperThoracicLength, depthAt(tMidThoracicTop), L.chestDepth);
 
   // ---- Neck: cervical -> head-on-neck -> head ----
   const neckBaseR = L.headBreadth * 0.35 * LIMB_THICKNESS;
@@ -253,11 +382,15 @@ export function buildFigure(L) {
   const cervical = addSpineSegment(joints, upperThoracic.tip, 'cerv', L.cervicalLength);
   cervical.attachPoint.position.y = L.upperThoracicLength;
   cervical.attachPoint.add(jointMarker(neckBaseR * 0.95));
+  addSpineBead(cervical.attachPoint, L.chestDepth);
   cervical.tip.add(limbUp(neckBaseR, neckMidR, L.cervicalLength, SKIN_DARK));
+  addSpineIndicator(cervical.tip, L.cervicalLength, neckBaseR * 2, neckMidR * 2);
 
   const headOnNeck = addSpineSegment(joints, cervical.tip, 'headneck', L.headOnNeckLength);
   headOnNeck.attachPoint.position.y = L.cervicalLength;
+  addSpineBead(headOnNeck.attachPoint, neckMidR * 2);
   headOnNeck.tip.add(limbUp(neckMidR, neckTopR, L.headOnNeckLength, SKIN_DARK));
+  addSpineIndicator(headOnNeck.tip, L.headOnNeckLength, neckMidR * 2, neckTopR * 2);
 
   const headR = L.headBreadth / 2;
   const head = new THREE.Mesh(
@@ -402,7 +535,16 @@ export function buildFigure(L) {
     ankle.tip.add(foot);
   }
 
-  return { root, joints, lengths: L };
+  return {
+    root,
+    joints,
+    lengths: L,
+    // Reference frames for the overall-orientation control (main.js): the
+    // pelvis's own pivot tip and the head-on-neck segment (the eye line
+    // sits in its local X-Z plane), so the whole figure can be levelled
+    // against either one regardless of how the spine is posed.
+    refs: { eyeline: headOnNeck.tip, pelvis: pelvisPivot.tip },
+  };
 }
 
 // Applies a slider value (degrees, already in neutral-zero convention) to a joint.

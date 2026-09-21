@@ -54,6 +54,19 @@
     </section>
 
     <section class="panel-block">
+      <h2>View</h2>
+      <label class="field-row">
+        Orientation
+        <select id="orientation-select">
+          <option value="none">As Posed</option>
+          <option value="eyeline">Level Eye-Line</option>
+          <option value="pelvis">Level Pelvis</option>
+        </select>
+      </label>
+      <p class="hint">The figure is tilted as posed by default. Leveling the eye-line or the pelvis rotates the whole figure rigidly about that landmark so it reads as horizontal, useful for judging compensations elsewhere (e.g. a tilted pelvis under a level gaze, or vice versa) the way a person would actually stand or look.</p>
+    </section>
+
+    <section class="panel-block">
       <h2>Position</h2>
       <div class="button-row">
         <button id="reset-btn" type="button">Reset to Neutral (0&deg;)</button>
@@ -72,6 +85,7 @@
         <button id="load-btn" type="button">Load</button>
         <button id="delete-btn" type="button" class="danger">Delete</button>
       </div>
+      <p class="hint"><strong>Save</strong> keeps a named position (height, build, measurements, joint ranges and angles) in this browser only &mdash; pick it from the list and <strong>Load</strong> to restore it, or <strong>Delete</strong> to remove it. <strong>Export JSON</strong> downloads the same data as a file you can back up or hand to someone else; <strong>Import JSON</strong> reads such a file back in, overwriting the current pose.</p>
       <textarea id="summary-box" class="summary-box" readonly rows="6"></textarea>
     </section>
 

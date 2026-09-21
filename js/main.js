@@ -28,6 +28,7 @@ const deleteBtn = document.getElementById('delete-btn');
 const summaryBox = document.getElementById('summary-box');
 const measurementPanel = document.getElementById('measurement-panel');
 const resetMeasurementsBtn = document.getElementById('reset-measurements-btn');
+const orientationSelect = document.getElementById('orientation-select');
 
 const state = {}; // fullId -> current pose angle (deg)
 const ranges = {}; // fullId -> {min, max} this individual's measured extrema
@@ -118,20 +119,56 @@ function frameCamera(heightMeters) {
   controls.update();
 }
 
+// Counter-rotates the whole figure (about whichever reference point stays
+// fixed) so a chosen landmark — the eye line or the pelvis — reads as
+// level, regardless of how the spine/pelvis joints are actually posed.
+// Leveling any one local axis of a rigid frame to true vertical
+// automatically brings the other two into the horizontal plane too (they
+// stay mutually perpendicular under rotation), so aligning the reference
+// object's local "up" to world up is sufficient to level its whole
+// transverse plane — the eye line, or the pelvis's own hip line.
+function applyOrientation() {
+  if (!rig) return;
+  rig.root.quaternion.identity();
+  rig.root.position.copy(rig.baseRootPosition);
+  const mode = orientationSelect ? orientationSelect.value : 'none';
+  const refObject = rig.refs[mode];
+  if (!refObject) return;
+  rig.root.updateMatrixWorld(true);
+
+  const refWorldPos = new THREE.Vector3();
+  refObject.getWorldPosition(refWorldPos);
+  const worldQuat = new THREE.Quaternion();
+  refObject.getWorldQuaternion(worldQuat);
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat).normalize();
+  const correction = new THREE.Quaternion().setFromUnitVectors(up, new THREE.Vector3(0, 1, 0));
+
+  // Rotate the whole figure by `correction` while keeping the reference
+  // point itself fixed in place, so the body swings around that landmark
+  // instead of around the ground origin.
+  const offset = refWorldPos.clone().sub(rig.root.position);
+  rig.root.quaternion.copy(correction);
+  rig.root.position.copy(refWorldPos.clone().sub(offset.applyQuaternion(correction)));
+  rig.root.updateMatrixWorld(true);
+}
+
 function rebuildFigure() {
   const lengths = currentLengths();
   if (rig) scene.remove(rig.root);
   rig = buildFigure(lengths);
+  rig.baseRootPosition = rig.root.position.clone();
   scene.add(rig.root);
   for (const [fullId, entry] of Object.entries(rig.joints)) {
     applyJointAngle(entry, state[fullId] ?? 0);
   }
+  applyOrientation();
   frameCamera(standingHeightMeters(lengths));
 }
 
 function onJointChange(fullId, degrees) {
   const entry = rig.joints[fullId];
   if (entry) applyJointAngle(entry, degrees);
+  applyOrientation();
   summaryBox.value = generateSummaryText(state, Number(heightInput.value));
 }
 
@@ -153,6 +190,8 @@ sexSelect.addEventListener('change', () => {
   rebuildFigure();
   refreshMeasurementDefaults(measurementRows, lengthOverrides, currentDefaultsCm());
 });
+
+orientationSelect.addEventListener('change', applyOrientation);
 
 resetBtn.addEventListener('click', () => resetAll(state, rows, onJointChange));
 resetRangesBtn.addEventListener('click', () => {
